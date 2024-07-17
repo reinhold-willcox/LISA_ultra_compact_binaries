@@ -36,9 +36,29 @@ def RCDFInv(Xir,Hr):
         sys.exit()
     return R
 
+def Sample1D(Hr,Hz):
+    RRand    = np.random.uniform()
+    ZRand    = np.random.uniform()
+    ZSign    = np.sign(np.random.uniform() - 0.5)
+    R        = RCDFInv(RRand,Hr)
+    Z        = zCDFInv(ZRand,Hz)*ZSign
+    Th       = 2.*np.pi*np.random.uniform()
+    X        = R*np.cos(Th)
+    Y        = R*np.sin(Th)
+    Age      = np.random.uniform(0, 12)
+    
+    XRel     = X - 8.
+    YRel     = Y
+    ZRel     = Z
+
+    RRel     = np.sqrt(XRel**2 + YRel**2 + ZRel**2)
+
+    ResDict  = {'Age': Age, 'Xkpc': X, 'Ykpc': Y, 'Zkpc': Z, 'Rkpc': R, 'Th': Th, 'XRelkpc': XRel, 'YRelkpc':YRel, 'ZRelkpc': ZRel, 'RRelkpc': RRel}
+    
+    return ResDict
 
  
-def Sample1D(NBin,Hr,Hz):
+def Sample1DPop(NBin,Hr,Hz):
     RRandSet = np.random.uniform(0, 1, NBin)
     ZRandSet = np.random.uniform(0, 1, NBin)
     ZSignSet = np.sign(np.random.uniform(0, 2, NBin) - 1)
@@ -48,19 +68,22 @@ def Sample1D(NBin,Hr,Hz):
     XSet     = RSet*np.cos(ThSet)
     YSet     = RSet*np.sin(ThSet)
     AgeSet   = np.random.uniform(0, 12, NBin)
-    IDSet    = np.arange(NBin) + 1
+    IDSet    = np.arange(NBin) + 1    
     
     ResDict  = {'ID':IDSet, 'Ages': AgeSet, 'Xkpc': XSet, 'Ykpc': YSet, 'Zkpc': ZSet, 'Rkpc': RSet, 'Th': ThSet}
     ResDF    = pd.DataFrame(ResDict)    
     return ResDF
 
-NBin = 10**4
-Hr   = 4
-Hz   = 0.5
+ExportTable = False
 
-Res = Sample1D(NBin,Hr,Hz)
-
-Res.to_csv('./GalTest.csv', index = False)
+if ExportTable:
+    NBin = 10**4
+    Hr   = 4
+    Hz   = 0.5
+    
+    Res = Sample1DPop(NBin,Hr,Hz)
+    
+    Res.to_csv('./GalTest.csv', index = False)
                 
     
     
