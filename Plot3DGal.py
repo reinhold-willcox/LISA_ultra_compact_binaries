@@ -20,7 +20,7 @@ sys.path.insert(1, './PyModules/')
 
 
 # Read in the Galaxy data
-df = pd.read_csv('./GalTest.csv')
+df = pd.read_csv('./GalTest2.csv')
 # Extracting the columns
 x = df['Xkpc']
 y = df['Ykpc']
@@ -31,7 +31,7 @@ fig = plt.figure(dpi=300)
 ax = fig.add_subplot(111, projection='3d', facecolor='black')
 
 # Plotting the points
-ax.scatter(x, y, z, color='lime', s=1, alpha=0.05)  # 's' is the size of the points
+ax.scatter(x, y, z, color='lime', s=5, alpha=0.05)  # 's' is the size of the points
 
 # Set the background color
 ax.set_facecolor('black')
@@ -52,9 +52,9 @@ ax.tick_params(axis='y', colors='white')
 ax.tick_params(axis='z', colors='white')
 
 # Save the plot as a high-resolution image
-plt.savefig('./LISAGalTest.png', dpi=300, bbox_inches='tight', pad_inches=0.1, facecolor='black')
+plt.savefig('./LISAGalTest2.png', dpi=300, bbox_inches='tight', pad_inches=0.1, facecolor='black')
 
-
+sys.exit()
 #Draw the DWDs
 DWDArrPre = pd.read_csv('./DWD.csv')
 #Assuming constant SFR from 14 Gyr till today, re-weight the distribution of DWDs
