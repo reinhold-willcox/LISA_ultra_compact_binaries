@@ -29,19 +29,41 @@ from rapid_code_load_T0 import load_T0_data
 #Units are MSun, kpc, Gyr
 #FOR VISUALS, WE USE A RIGHT-HANDED SYSTEM, WITH X POINTING AT THE SUN, Z ALIGNED WITH THE SPIN, AND THE ORIGIN AT THE GALACTIC CENTER
 
+# How to run:
+# 0) Obtain LISA Synthetic UCB Catalog-related packages: rapid_code_load_T0, get_mass_norm (https://github.com/Synthetic-UCB-Catalogs/analysis-scripts)
+# 1) If this is the first time you run the code, set 'RecalculateNormConstants' and 'RecalculateCDFs' to True. For subsequent runs they should be False.
+# 2) Ensure that locally there is a './Simulations/' folder with T0-formatted data, with the same stucture as on Google drive
+# 3) Ensure there are mass norms defined for the population (i.e. what total Galactic mass naturally contains the current population)
+# 3) Run the code with 'ImportSimulation' set to True
+# 4) Post-process the simulation with the companion visualisation code (Plot3DGal.py)
 
-#Model parameters and options
-ModelParams = {'GalaxyModel': 'Besancon',
-               'UseOneBinOnly': False, #If False - use full model; if True - use just one bin, for visualizations
-               'OneBinToUse': 10, #Number of the bin, if only one bin in used
+#Model parameters and options 
+ModelParams = { #Main options
+               'GalaxyModel': 'Besancon', #Currently can only be Besancon
                'RecalculateNormConstants': False, #If true, density normalisations are recalculated and printed out, else already existing versions are used
                'RecalculateCDFs': False, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
-               'ImportSimulation': True, #If true, construct the present-day DWD populaiton (as opposed to the MS population)
+               'ImportSimulation': True, #If true, construct the present-day DWD populaiton (as opposed to the MS population)               
+               #Simulation options
+               'RunWave': 'IC_Variations',
+               'RunSubType': 'fiducial',
+               #'RunSubType': 'porb_log_uniform',
+               #'RunSubType': 'uniform_ecc',
+               #'RunSubType': 'qmin_01',
+               'Code': 'COSMIC',
+               #'Code': 'ComBinE',
+               #'Code': 'COMPAS',
+               #'Code': 'SeBa',
+               #Simulation parameters
+               'ACutRSunPre': 6., #Initial cut for all DWD binaries
+               'RepresentDWDsBy': 500000,  #Represent the present-day LISA candidates by this nubmer of binaries
+               'LISAPCutHours': (2/1.e-4)/(3600.), #LISA cut-off orbital period, 1/e-4 Hz + remember that GW frequency is 2X the orbital frequency
+               'MaxTDelay': 14000,
+               'DeltaTGalMyr': 50, #Time step resolution in the Galactic SFR
+               #Extra options
+               'UseOneBinOnly': False, #If False - use full model; if True - use just one bin, for visualizations
+               'OneBinToUse': 10, #Number of the bin, if only one bin in used
                'NPoints': 1e5 # Number of stars to sample if we just sample present-day stars
     }
-
-#Galaxy model can be 'Besancon'
-
 
 ######################################
 #######    Galactic Model Specifications
@@ -55,8 +77,6 @@ ModelParams = {'GalaxyModel': 'Besancon',
 
 #Define the model in two steps:
 #First, specify already known parameters
-
-
 
 #Rho(r,z), for the Besancon model, thin disk, weights are defined later
 def RhoBesancon(r, z, iBin):
@@ -123,7 +143,7 @@ def RhoBesancon(r, z, iBin):
 # =============================================================================
 ## Volume integrator for the Galactic density components
 # def GetVolumeIntegral(iBin):
-#     NPoints = 400
+#     NPoints =  BesanconParamsDefined['ZNPoints'][iBin-1]
 #     
 #     XRange = BesanconParamsDefined['XRange'][iBin-1]
 #     YRange = BesanconParamsDefined['YRange'][iBin-1]
@@ -152,7 +172,7 @@ def RhoBesancon(r, z, iBin):
 
 #2D Volume integrator for the Galactic density components
 def GetVolumeIntegral(iBin):
-    NPoints = 1000
+    NPoints =  BesanconParamsDefined['ZNPoints'][iBin-1]
     
     RRange = np.sqrt((BesanconParamsDefined['XRange'][iBin-1])**2 + (BesanconParamsDefined['YRange'][iBin-1])**2)
     ZRange = BesanconParamsDefined['ZRange'][iBin-1]
@@ -173,7 +193,6 @@ def GetVolumeIntegral(iBin):
     Res = np.sum(RhoSet*2*np.pi*R) * dR * dZ
     
     return Res
-
 
 #Find the norm for the different Galactic components, and define the weights
 #Store it in # NormCSet - the normalisation constant array
@@ -214,12 +233,12 @@ else:
     
     
 GalFunctionsDict = {'Besancon': RhoBesancon}
-    
 
-
+#Get the column density at a given radius for a given bin
 def GetRhoBar(r,iBin,Model):
-    Nz      = 300
-    ZSet    = np.linspace(0,2,Nz)
+    Nz      = BesanconParamsDefined['ZNPoints'][iBin-1]
+    ZRange  = BesanconParamsDefined['ZRange'][iBin-1]
+    ZSet    = np.linspace(0,ZRange,Nz)
     RhoFun  = GalFunctionsDict[Model]
     RhoSet  = np.zeros(Nz)
     for i in range(Nz):
@@ -249,8 +268,9 @@ def GetRhoBar(r,iBin,Model):
 
 #A new version of GetZ - make a CDF for GetZ and save a grid of CDFs
 def GetZCDF(r,iBin,Model):    
-    Nz      = 300
-    ZSet    = np.linspace(0,2,Nz)
+    Nz      = BesanconParamsDefined['ZNPoints'][iBin-1]
+    ZRange  = BesanconParamsDefined['ZRange'][iBin-1]
+    ZSet    = np.linspace(0,ZRange,Nz)
     RhoFun  = GalFunctionsDict[Model]
     RhoSet  = np.zeros(Nz)
     for i in range(Nz):
@@ -279,10 +299,11 @@ def GetZ(RFin,iBin,Model):
     zFin       = SignXi*np.interp(Xiz,RhozCDF,MidZSet)   
     return zFin
     
-
+#Array of column densities as a function of radius
 def RhoRArray(iBin, Model):
-    Nr      = 1000
-    RSet    = np.linspace(0,30,Nr)
+    Nr      = BesanconParamsDefined['RNPoints'][iBin-1]
+    RRange  = BesanconParamsDefined['RRange'][iBin-1]
+    RSet    = np.linspace(0,RRange,Nr)
     RhoSet  = np.zeros(Nr)
     ZCDFSet = {}
     for ir in range(Nr):
@@ -346,7 +367,6 @@ def RWDPre(MWD):
     return Res
 RWD = np.vectorize(RWDPre)
 
-
 #The orbital period in years
 def POrbYrPre(MDonor, MAccretor, BinARSun):
     Omega = np.sqrt(GNewtCGS*MSunToG*(MDonor + MAccretor)/(BinARSun*RSunToCm)**3)
@@ -390,26 +410,20 @@ def fRLDonor(MDonorMSun,MAccretorMSun):
 
 if ModelParams['ImportSimulation']:
     #Import data
-    #Parameters
-    RunWave         = 'fiducial'
-    #RunWave         = 'porb_log_uniform'
-    #RunWave         = 'uniform_ecc'
-    #RunWave         = 'qmin_01'
-    Code            = 'COSMIC'
-    #Code            = 'ComBinE'
-    #Code            = 'COMPAS'
-    FileName        = './Simulations/' + RunWave + '/' + Code + '_T0.hdf5'
-    OutputSubfolder = 'ICVariations'
-    CurrOutDir      = './ProcessedSimulations/' + OutputSubfolder + '/' + RunWave + '/'
+    RunWave         = ModelParams['RunWave']
+    RunSubType      = ModelParams['RunSubType']
+    Code            = ModelParams['Code']
+    FileName        = './Simulations/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
+    CurrOutDir      = './ProcessedSimulations/'  + RunWave + '/' + RunSubType + '/'
     os.makedirs(CurrOutDir,exist_ok=True)
-    ACutRSunPre     = 6     #Initial cut for all DWD binaries
-    LISAPCutHours   = (2/1.e-4)/(3600.)  #1/e-4 Hz + remember that GW frequency is 2X the orbital frequency
-    MaxTDelay       = 14000    
-    RepresentDWDsBy = 500000     #Represent the present-day LISA candidates by this nubmer of binaries
-    DeltaTGalMyr    = 50         #Time step resolution in the Galactic SFR
+    ACutRSunPre     = ModelParams['ACutRSunPre']
+    LISAPCutHours   = ModelParams['LISAPCutHours'] 
+    MaxTDelay       = ModelParams['MaxTDelay']    
+    RepresentDWDsBy = ModelParams['RepresentDWDsBy'] 
+    DeltaTGalMyr    = ModelParams['DeltaTGalMyr']
     
     #General quantities
-    MassNorm        = get_mass_norm(RunWave)
+    MassNorm        = get_mass_norm(RunSubType)
     NStarsPerRun    = GalaxyParams['MGal']/MassNorm
     SimData         = load_T0_data(FileName)
     NRuns           = SimData[1]['NSYS'][0]
@@ -636,14 +650,14 @@ if ModelParams['RecalculateCDFs']:
                 # Store each list in the dictionary as a dataset
                 for key, value in data_dict.items():
                     y_group.create_dataset(key, data=value, compression='gzip')
-else:
-    #Load the previously calculated r CDFs
-    ModelRCache     = []
-    for Dict in load_Rdicts_from_hdf5('./GalCache/BesanconRData.h5'):
-        # Process each dictionary one at a time
-        ModelRCache.append(Dict)        
-    #Load the previously calculated rz CDFs
-    ZCDFDictSet = load_RZdicts_from_hdf5('./GalCache/BesanconRZData.h5')
+                    
+#Load the previously calculated r CDFs
+ModelRCache     = []
+for Dict in load_Rdicts_from_hdf5('./GalCache/BesanconRData.h5'):
+    # Process each dictionary one at a time
+    ModelRCache.append(Dict)        
+#Load the previously calculated rz CDFs
+ZCDFDictSet = load_RZdicts_from_hdf5('./GalCache/BesanconRZData.h5')
 
 
 #Get the z-CDFs
