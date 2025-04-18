@@ -40,8 +40,8 @@ from rapid_code_load_T0 import load_T0_data
 #Model parameters and options 
 ModelParams = { #Main options
                'GalaxyModel': 'Besancon', #Currently can only be Besancon
-               'RecalculateNormConstants': False, #If true, density normalisations are recalculated and printed out, else already existing versions are used
-               'RecalculateCDFs': False, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
+               'RecalculateNormConstants': True, #If true, density normalisations are recalculated and printed out, else already existing versions are used
+               'RecalculateCDFs': True, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
                'ImportSimulation': True, #If true, construct the present-day DWD populaiton (as opposed to the MS population)               
                #Simulation options
                'RunWave': 'IC_Variations',
@@ -49,7 +49,8 @@ ModelParams = { #Main options
                #'RunSubType': 'porb_log_uniform',
                #'RunSubType': 'uniform_ecc',
                #'RunSubType': 'qmin_01',
-               'Code': 'COSMIC',
+               #'Code': 'COSMIC',
+               'Code': 'SEVN',
                #'Code': 'ComBinE',
                #'Code': 'COMPAS',
                #'Code': 'SeBa',
@@ -413,7 +414,10 @@ if ModelParams['ImportSimulation']:
     RunWave         = ModelParams['RunWave']
     RunSubType      = ModelParams['RunSubType']
     Code            = ModelParams['Code']
-    FileName        = './Simulations/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
+    if not Code == 'SEVN':
+        FileName        = './Simulations/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
+    else:
+        FileName        = './Simulations/' + RunWave + '/' + RunSubType + '/' + Code + '_MIST_T0.csv'
     CurrOutDir      = './ProcessedSimulations/'  + RunWave + '/' + RunSubType + '/'
     os.makedirs(CurrOutDir,exist_ok=True)
     ACutRSunPre     = ModelParams['ACutRSunPre']
@@ -425,7 +429,7 @@ if ModelParams['ImportSimulation']:
     #General quantities
     MassNorm        = get_mass_norm(RunSubType)
     NStarsPerRun    = GalaxyParams['MGal']/MassNorm
-    SimData         = load_T0_data(FileName)
+    SimData         = load_T0_data(FileName,Code,metallicity=0.0142)
     NRuns           = SimData[1]['NSYS'][0]
     
     #Pre-process simulations

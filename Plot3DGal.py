@@ -45,7 +45,8 @@ RunWave         = 'fiducial'
 #Code            = 'COSMIC'
 #Code            = 'ComBinE'
 #Code            = 'COMPAS'
-Code            = 'COSMIC'
+#Code            = 'COSMIC'
+Code             = 'SEVN'
     
 OutputSubfolder = PlotSetName
 CurrOutDir      = './ProcessedSimulations/' + OutputSubfolder + '/' + RunWave 
