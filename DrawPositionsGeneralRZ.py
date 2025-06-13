@@ -41,23 +41,27 @@ from rapid_code_load_T0 import load_T0_data
 ModelParams = { #Main options
                'GalaxyModel': 'Besancon', #Currently can only be Besancon
                'RecalculateNormConstants': True, #If true, density normalisations are recalculated and printed out, else already existing versions are used
-               'RecalculateCDFs': True, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
+               'RecalculateCDFs': False, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
                'ImportSimulation': True, #If true, construct the present-day DWD populaiton (as opposed to the MS population)               
                #Simulation options
-               'RunWave': 'IC_Variations',
-               'RunSubType': 'fiducial',
-               #'RunSubType': 'porb_log_uniform',
+               'RunWave': 'initial_condition_variations',
+               #'RunSubType': 'fiducial',
+               #'RunSubType': 'thermal_ecc',
                #'RunSubType': 'uniform_ecc',
+               #'RunSubType': 'm2_min_05',
                #'RunSubType': 'qmin_01',
+               'RunSubType': 'porb_log_uniform',
                #'Code': 'COSMIC',
+               #'Code': 'METISSE',
+               #'Code': 'SeBa',     
                'Code': 'SEVN',
                #'Code': 'ComBinE',
                #'Code': 'COMPAS',
-               #'Code': 'SeBa',
                #Simulation parameters
                'ACutRSunPre': 6., #Initial cut for all DWD binaries
+               'UseRepresentingWDs': False, #If False - each binary in the Galaxy is drawn as 1 to 1; if True - all the Galactic DWDs are represented by a smaller number, N, binaries
                'RepresentDWDsBy': 500000,  #Represent the present-day LISA candidates by this nubmer of binaries
-               'LISAPCutHours': (2/1.e-4)/(3600.), #LISA cut-off orbital period, 1/e-4 Hz + remember that GW frequency is 2X the orbital frequency
+               'LISAPCutHours': (2/1.e-4)/(3600.), #LISA cut-off orbital period, 1.e-4 Hz + remember that GW frequency is 2X the orbital frequency
                'MaxTDelay': 14000,
                'DeltaTGalMyr': 50, #Time step resolution in the Galactic SFR
                #Extra options
@@ -415,21 +419,25 @@ if ModelParams['ImportSimulation']:
     RunSubType      = ModelParams['RunSubType']
     Code            = ModelParams['Code']
     if not Code == 'SEVN':
-        FileName        = './Simulations/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
+        FileName        = '../data_products/simulated_binary_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
     else:
-        FileName        = './Simulations/' + RunWave + '/' + RunSubType + '/' + Code + '_MIST_T0.csv'
-    CurrOutDir      = './ProcessedSimulations/'  + RunWave + '/' + RunSubType + '/'
+        FileName        = '../data_products/simulated_binary_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/' + Code + '_MIST_T0.csv'
+    CurrOutDir      = '../data_products/simulated_galaxy_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/'
     os.makedirs(CurrOutDir,exist_ok=True)
     ACutRSunPre     = ModelParams['ACutRSunPre']
     LISAPCutHours   = ModelParams['LISAPCutHours'] 
-    MaxTDelay       = ModelParams['MaxTDelay']    
+    MaxTDelay       = ModelParams['MaxTDelay']   
     RepresentDWDsBy = ModelParams['RepresentDWDsBy'] 
     DeltaTGalMyr    = ModelParams['DeltaTGalMyr']
+    UseRepresentingWDs = ModelParams['UseRepresentingWDs']
     
     #General quantities
     MassNorm        = get_mass_norm(RunSubType)
     NStarsPerRun    = GalaxyParams['MGal']/MassNorm
-    SimData         = load_T0_data(FileName,Code,metallicity=0.0142)
+    if not (Code == 'ComBinE'):
+        SimData         = load_T0_data(FileName,Code,metallicity=0.0142)
+    else:
+        SimData         = load_T0_data(FileName,metallicity=0.0142)
     NRuns           = SimData[1]['NSYS'][0]
     
     #Pre-process simulations
@@ -543,7 +551,10 @@ if ModelParams['ImportSimulation']:
         
     #Make a dataset of the present-day LISA DWD candidates
     #Draw the number of objects from each sub-bin in proportion to the number of real DWD LISA candidates expected from this sub-bin
-    NFindPre     = RepresentDWDsBy
+    if UseRepresentingWDs:
+        NFindPre     = RepresentDWDsBy
+    else:
+        NFindPre     = NLISACandidatesToday
     NFindSubBins = np.array([probabilistic_round((NFindPre/NLISACandidatesToday)*SubBinDF['SubBinNDWDsReal'].iloc[i]) for i in range(SubBinCounter)],dtype=int)
     NFind        = np.sum(NFindSubBins)
     PresentDayDWDCandFinSet    = []
