@@ -53,8 +53,8 @@ ModelParams = { #Main options
                'RunSubType': 'porb_log_uniform',
                #'Code': 'COSMIC',
                #'Code': 'METISSE',
-               #'Code': 'SeBa',     
-               'Code': 'SEVN',
+               'Code': 'SeBa',     
+               #'Code': 'SEVN',
                #'Code': 'ComBinE',
                #'Code': 'COMPAS',
                #Simulation parameters
@@ -419,10 +419,10 @@ if ModelParams['ImportSimulation']:
     RunSubType      = ModelParams['RunSubType']
     Code            = ModelParams['Code']
     if not Code == 'SEVN':
-        FileName        = '../data_products/simulated_binary_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
+        FileName        = os.environ['UCB_GOOGLE_DRIVE_DIR'] + '/simulated_binary_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/' + Code + '_T0.hdf5'
     else:
-        FileName        = '../data_products/simulated_binary_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/' + Code + '_MIST_T0.csv'
-    CurrOutDir      = '../data_products/simulated_galaxy_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/'
+        FileName        = os.environ['UCB_GOOGLE_DRIVE_DIR'] + '/simulated_binary_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/' + Code + '_MIST_T0.csv'
+    CurrOutDir      = os.environ['UCB_GOOGLE_DRIVE_DIR'] + '/simulated_galaxy_populations/monte_carlo_comparisons/' + RunWave + '/' + RunSubType + '/'
     os.makedirs(CurrOutDir,exist_ok=True)
     ACutRSunPre     = ModelParams['ACutRSunPre']
     LISAPCutHours   = ModelParams['LISAPCutHours'] 
@@ -733,7 +733,7 @@ FeHFin   = np.zeros(NGalDo)
 
 
 for i in range(NGalDo):
-    if i % 100 == 0:
+    if i % 10000 == 0:
         print('Step 2: ', i, '/',NGalDo)
     if ModelParams['ImportSimulation']:
         ResCurr     = DrawStar('Besancon', int(PresentDayDWDCandFinDF.iloc[i]['BinID']) + 1)
