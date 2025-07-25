@@ -41,19 +41,19 @@ from rapid_code_load_T0 import load_T0_data
 ModelParams = { #Main options
                'GalaxyModel': 'Besancon', #Currently can only be Besancon
                'RecalculateNormConstants': True, #If true, density normalisations are recalculated and printed out, else already existing versions are used
-               'RecalculateCDFs': True, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
+               'RecalculateCDFs': False, #If true, the galaxy distribution CDFs are recalculated (use True when running first time on a new machine)
                'ImportSimulation': True, #If true, construct the present-day DWD populaiton (as opposed to the MS population)               
                #Simulation options
                'RunWave': 'initial_condition_variations',
-               #'RunSubType': 'fiducial',
+               'RunSubType': 'fiducial',
                #'RunSubType': 'thermal_ecc',
                #'RunSubType': 'uniform_ecc',
                #'RunSubType': 'm2_min_05',
                #'RunSubType': 'qmin_01',
-               'RunSubType': 'porb_log_uniform',
-               #'Code': 'COSMIC',
+               #'RunSubType': 'porb_log_uniform',
+               'Code': 'COSMIC',
                #'Code': 'METISSE',
-               'Code': 'SeBa',     
+               #'Code': 'SeBa',     
                #'Code': 'SEVN',
                #'Code': 'ComBinE',
                #'Code': 'COMPAS',
@@ -524,6 +524,7 @@ if ModelParams['ImportSimulation']:
             CurrTMin      += CurrDeltaT
             CurrTMax      += CurrDeltaT
             #print(NSubBins)
+    print('Step 1 done')
 
     #Make a DF for the present-day population properties
     SubBinDF = pd.DataFrame(SubBinProps)
@@ -574,6 +575,7 @@ if ModelParams['ImportSimulation']:
             PresentDayDWDCandFin = PresentDayDWDCandFin.loc[PresentDayDWDCandFin['PSetTodayHours'] < 5.6]
             
             PresentDayDWDCandFinSet.append(PresentDayDWDCandFin)
+            PresentDayDWDCandFin = []
                     
     PresentDayDWDCandFinDF = pd.concat(PresentDayDWDCandFinSet, ignore_index=True)
     
@@ -727,73 +729,96 @@ if ModelParams['ImportSimulation']:
 else:
     NGalDo = int(ModelParams['NPoints'])
     
-RSetFin  = np.zeros(NGalDo)
-ZSetFin  = np.zeros(NGalDo)
-ThSetFin = np.zeros(NGalDo)
-XSetFin  = np.zeros(NGalDo)
-YSetFin  = np.zeros(NGalDo)
-AgeFin   = np.zeros(NGalDo)
-BinFin   = np.zeros(NGalDo)
-FeHFin   = np.zeros(NGalDo)
 
 
-for i in range(NGalDo):
-    if i % 10000 == 0:
-        print('Step 2: ', i, '/',NGalDo)
+
+OutputChunkSize = 10000
+NChunks         = int(NGalDo/OutputChunkSize) + 1
+NLeft           = NGalDo
+FirstPassQ      = True
+
+RSetFin  = np.zeros(OutputChunkSize)
+ZSetFin  = np.zeros(OutputChunkSize)
+ThSetFin = np.zeros(OutputChunkSize)
+XSetFin  = np.zeros(OutputChunkSize)
+YSetFin  = np.zeros(OutputChunkSize)
+AgeFin   = np.zeros(OutputChunkSize)
+BinFin   = np.zeros(OutputChunkSize)
+FeHFin   = np.zeros(OutputChunkSize)
+
+for Ch in range(NChunks):
+    NDo  = min(NLeft,OutputChunkSize)    
+    for i in range(NDo):
+        if (NGalDo - NLeft + i) % 10000 == 0:
+            print('Step 2: ', (NGalDo - NLeft + i), '/',NGalDo)
+        if ModelParams['ImportSimulation']:
+            ResCurr     = DrawStar('Besancon', int(PresentDayDWDCandFinDF.iloc[NGalDo - NLeft + i]['BinID']) + 1)
+            AgeFin[i]   = PresentDayDWDCandFinDF.iloc[NGalDo - NLeft + i]['SubBinMidAge']
+        else:
+            ResCurr     = DrawStar('Besancon', -1)
+            AgeFin[i]   = ResCurr['Age']
+    
+        BinFin[i]   = ResCurr['Bin']
+        FeHFin[i]   = ResCurr['FeH']
+        if not (ResCurr['Bin'] == 10):
+            RSetFin[i]  = ResCurr['RZ'][0]
+            ZSetFin[i]  = ResCurr['RZ'][1]
+            Th          = 2.*np.pi*np.random.uniform()
+            ThSetFin[i] = Th
+            XSetFin[i]  = ResCurr['RZ'][0]*np.cos(Th)
+            YSetFin[i]  = ResCurr['RZ'][0]*np.sin(Th)
+        else:
+            #The bulge
+            #R and Z are such that Z is the -X axis of the bulge, and R=(X,Y) are (Y,-Z) axes of the bulge
+            #First transform to bulge coordinates
+            Th          = 2.*np.pi*np.random.uniform()
+            Rad         = ResCurr['RZ'][0]
+            XPrime      = Rad*np.cos(Th)
+            YPrime      = Rad*np.sin(Th)
+            ZPrime      = ResCurr['RZ'][1]
+            #ASSUMING THE ALPHA ANGLE IS ALONG THE GALACTIC ROTATION - CHECK DWEK
+            XSetFin[i]  = -ZPrime*np.sin(Alpha) + XPrime*np.cos(Alpha)
+            YSetFin[i]  = ZPrime*np.cos(Alpha) + XPrime*np.sin(Alpha)
+            ZSetFin[i]  = -YPrime
+            RSetFin[i]  = np.sqrt(XPrime**2 + ZPrime**2)
+
+    #Remember the right-handedness
+    XRel     = XSetFin - GalaxyParams['RGalSun']
+    YRel     = YSetFin
+    ZRel     = ZSetFin + GalaxyParams['ZGalSun']
+    
+    RRel     = np.sqrt(XRel**2 + YRel**2 + ZRel**2)
+    Galb     = np.arcsin(ZRel/RRel)
+    Gall     = np.zeros(OutputChunkSize)
+    Gall[YRel>=0] = np.arccos(XRel[YRel>=0]/(np.sqrt((RRel[YRel>=0])**2 - (ZRel[YRel>=0])**2)))
+    Gall[YRel<0]  = 2*np.pi - np.arccos(XRel[YRel<0]/(np.sqrt((RRel[YRel<0])**2 - (ZRel[YRel<0])**2)))
+    
+    ResDict  = {'Bin': BinFin, 'Age': AgeFin, 'FeH': FeHFin, 'Xkpc': XSetFin, 'Ykpc': YSetFin, 'Zkpc': ZSetFin, 'Rkpc': RSetFin, 'Th': Th, 'XRelkpc': XRel, 'YRelkpc':YRel, 'ZRelkpc': ZRel, 'RRelkpc': RRel, 'Galb': Galb, 'Gall': Gall}
+    ResDF    = pd.DataFrame(ResDict)
+
+    
+    #DWDDF    = DWDSet.iloc[IDSet]
     if ModelParams['ImportSimulation']:
-        ResCurr     = DrawStar('Besancon', int(PresentDayDWDCandFinDF.iloc[i]['BinID']) + 1)
-        AgeFin[i]   = PresentDayDWDCandFinDF.iloc[i]['SubBinMidAge']
+        ResDF      = pd.concat([ResDF, PresentDayDWDCandFinDF.iloc[NGalDo-NLeft:NGalDo-NLeft+NDo]], axis=1)
+        if FirstPassQ:
+            ResDF.to_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', index = False, mode ="w")
+        else:
+            ResDF.to_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', index = False, mode ="a")
     else:
-        ResCurr     = DrawStar('Besancon', -1)
-        AgeFin[i]   = ResCurr['Age']
+        if FirstPassQ:
+            ResDF.to_csv(CurrOutDir + '/FullGalaxyMSs.csv', index = False, mode ="w")
+        else:
+            ResDF.to_csv(CurrOutDir + '/FullGalaxyMSs.csv', index = False, mode ="a")
 
-    BinFin[i]   = ResCurr['Bin']
-    FeHFin[i]   = ResCurr['FeH']
-    if not (ResCurr['Bin'] == 10):
-        RSetFin[i]  = ResCurr['RZ'][0]
-        ZSetFin[i]  = ResCurr['RZ'][1]
-        Th          = 2.*np.pi*np.random.uniform()
-        ThSetFin[i] = Th
-        XSetFin[i]  = ResCurr['RZ'][0]*np.cos(Th)
-        YSetFin[i]  = ResCurr['RZ'][0]*np.sin(Th)
-    else:
-        #The bulge
-        #R and Z are such that Z is the -X axis of the bulge, and R=(X,Y) are (Y,-Z) axes of the bulge
-        #First transform to bulge coordinates
-        Th          = 2.*np.pi*np.random.uniform()
-        Rad         = ResCurr['RZ'][0]
-        XPrime      = Rad*np.cos(Th)
-        YPrime      = Rad*np.sin(Th)
-        ZPrime      = ResCurr['RZ'][1]
-        #ASSUMING THE ALPHA ANGLE IS ALONG THE GALACTIC ROTATION - CHECK DWEK
-        XSetFin[i]  = -ZPrime*np.sin(Alpha) + XPrime*np.cos(Alpha)
-        YSetFin[i]  = ZPrime*np.cos(Alpha) + XPrime*np.sin(Alpha)
-        ZSetFin[i]  = -YPrime
-        RSetFin[i]  = np.sqrt(XPrime**2 + ZPrime**2)
-        
-#Remember the right-handedness
-XRel     = XSetFin - GalaxyParams['RGalSun']
-YRel     = YSetFin
-ZRel     = ZSetFin + GalaxyParams['ZGalSun']
-
-RRel     = np.sqrt(XRel**2 + YRel**2 + ZRel**2)
-Galb     = np.arcsin(ZRel/RRel)
-Gall     = np.zeros(NGalDo)
-Gall[YRel>=0] = np.arccos(XRel[YRel>=0]/(np.sqrt((RRel[YRel>=0])**2 - (ZRel[YRel>=0])**2)))
-Gall[YRel<0]  = 2*np.pi - np.arccos(XRel[YRel<0]/(np.sqrt((RRel[YRel<0])**2 - (ZRel[YRel<0])**2)))
-
-ResDict  = {'Bin': BinFin, 'Age': AgeFin, 'FeH': FeHFin, 'Xkpc': XSetFin, 'Ykpc': YSetFin, 'Zkpc': ZSetFin, 'Rkpc': RSetFin, 'Th': Th, 'XRelkpc': XRel, 'YRelkpc':YRel, 'ZRelkpc': ZRel, 'RRelkpc': RRel, 'Galb': Galb, 'Gall': Gall}
-ResDF    = pd.DataFrame(ResDict)
-
-#DWDDF    = DWDSet.iloc[IDSet]
-if ModelParams['ImportSimulation']:
-    ResDF      = pd.concat([ResDF, PresentDayDWDCandFinDF], axis=1)
-    ResDF.to_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', index = False)
-else:
-    ResDF.to_csv(CurrOutDir + '/FullGalaxyMSs.csv', index = False)
+    ResDF      = []      
+    NLeft     -= NDo 
+    FirstPassQ = False
+            
 
 #Export only LISA-visible DWDs
 if ModelParams['ImportSimulation']:
+    
+    ResDF = pd.read_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', columns=['mass1', 'mass2', 'RRelkpc', 'PSetTodayHours'])
     n_values = len(ResDF.index)
 
     m_1    = (ResDF['mass1']).to_numpy() * u.Msun
