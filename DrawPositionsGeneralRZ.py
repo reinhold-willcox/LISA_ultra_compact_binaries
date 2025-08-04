@@ -13,10 +13,12 @@ import random
 import h5py
 from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import UnivariateSpline
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from astropy import constants as const
 from astropy import units as u
 import legwork.source as source
 from scipy.optimize import root
+import time
 import sys
 import os
 CodeDir       = os.path.dirname(os.path.abspath(__file__))
@@ -69,6 +71,9 @@ ModelParams = { #Main options
                'OneBinToUse': 10, #Number of the bin, if only one bin in used
                'NPoints': 1e5 # Number of stars to sample if we just sample present-day stars
     }
+
+#Time the run
+start = time.perf_counter()
 
 ######################################
 #######    Galactic Model Specifications
@@ -549,7 +554,7 @@ if ModelParams['ImportSimulation']:
         fractional_part = N - lower
         return upper if random.random() < fractional_part else lower    
     
-        
+    print('Starting time convolution')    
     #Make a dataset of the present-day LISA DWD candidates
     #Draw the number of objects from each sub-bin in proportion to the number of real DWD LISA candidates expected from this sub-bin
     if UseRepresentingWDs:
@@ -579,7 +584,8 @@ if ModelParams['ImportSimulation']:
                     
     PresentDayDWDCandFinDF = pd.concat(PresentDayDWDCandFinSet, ignore_index=True)
     
-            
+    print('Ending time convolution')
+    
 else:
     CurrOutDir      = './FieldMSTests/'
     os.makedirs(CurrOutDir,exist_ok=True)
@@ -732,10 +738,11 @@ else:
 
 
 
-OutputChunkSize = 10000
-NChunks         = int(NGalDo/OutputChunkSize) + 1
-NLeft           = NGalDo
-FirstPassQ      = True
+OutputChunkSize  = 100000
+MultiProcessSize = 100
+NChunks          = int(NGalDo/OutputChunkSize) + 1
+NLeft            = NGalDo
+FirstPassQ       = True
 
 RSetFin  = np.zeros(OutputChunkSize)
 ZSetFin  = np.zeros(OutputChunkSize)
@@ -747,15 +754,57 @@ BinFin   = np.zeros(OutputChunkSize)
 FeHFin   = np.zeros(OutputChunkSize)
 
 for Ch in range(NChunks):
-    NDo  = min(NLeft,OutputChunkSize)    
+    NDo  = min(NLeft,OutputChunkSize)
+    
+    if NDo < OutputChunkSize:
+        RSetFin  = np.zeros(NDo)
+        ZSetFin  = np.zeros(NDo)
+        ThSetFin = np.zeros(NDo)
+        XSetFin  = np.zeros(NDo)
+        YSetFin  = np.zeros(NDo)
+        AgeFin   = np.zeros(NDo)
+        BinFin   = np.zeros(NDo)
+        FeHFin   = np.zeros(NDo)
+        
+    
+    #Draw all the needed positions for the chunk
+    #First get the Bin ID for which we need the positions
+    BinIDSet = PresentDayDWDCandFinDF.iloc[NGalDo-NLeft:NGalDo - NLeft + NDo]['BinID']
+    
+    #Then define a temporary function that draws positions for this chunk
+    if ModelParams['ImportSimulation']:
+        def DrawPos(i):
+            return DrawStar('Besancon', int(BinIDSet.iloc[i]) + 1)
+    else:
+        ResCurr     = DrawStar('Besancon', -1)
+        def DrawPos(i):
+            return DrawStar('Besancon', int(BinIDSet.iloc[i]) + 1)
+        
+    iSet = [i for i in range(NDo)]
+    
+    #Tested parallel processing for this part - eventually it seems more effective to call the whole convolution per core
+    #max_workers = os.cpu_count()
+    
+    #ChunkPosSet = []
+    # 
+    #with ProcessPoolExecutor(max_workers=max_workers) as exe:
+    #    for res in exe.map(DrawPos, iSet, chunksize=MultiProcessSize):
+    #        ChunkPosSet.append(res)
+    
+    DrawPosUse  = np.vectorize(DrawPos)
+    ChunkPosSet = DrawPosUse(iSet)
+    
+    
     for i in range(NDo):
-        if (NGalDo - NLeft + i) % 10000 == 0:
+        if (NGalDo - NLeft + i) % OutputChunkSize == 0:
             print('Step 2: ', (NGalDo - NLeft + i), '/',NGalDo)
         if ModelParams['ImportSimulation']:
-            ResCurr     = DrawStar('Besancon', int(PresentDayDWDCandFinDF.iloc[NGalDo - NLeft + i]['BinID']) + 1)
+            #ResCurr     = DrawStar('Besancon', int(PresentDayDWDCandFinDF.iloc[NGalDo - NLeft + i]['BinID']) + 1)
+            ResCurr     = ChunkPosSet[i]
             AgeFin[i]   = PresentDayDWDCandFinDF.iloc[NGalDo - NLeft + i]['SubBinMidAge']
         else:
-            ResCurr     = DrawStar('Besancon', -1)
+            #ResCurr     = DrawStar('Besancon', -1)
+            ResCurr     = ChunkPosSet[i]
             AgeFin[i]   = ResCurr['Age']
     
         BinFin[i]   = ResCurr['Bin']
@@ -789,36 +838,43 @@ for Ch in range(NChunks):
     
     RRel     = np.sqrt(XRel**2 + YRel**2 + ZRel**2)
     Galb     = np.arcsin(ZRel/RRel)
-    Gall     = np.zeros(OutputChunkSize)
+    Gall     = np.zeros(NDo)
     Gall[YRel>=0] = np.arccos(XRel[YRel>=0]/(np.sqrt((RRel[YRel>=0])**2 - (ZRel[YRel>=0])**2)))
     Gall[YRel<0]  = 2*np.pi - np.arccos(XRel[YRel<0]/(np.sqrt((RRel[YRel<0])**2 - (ZRel[YRel<0])**2)))
     
-    ResDict  = {'Bin': BinFin, 'Age': AgeFin, 'FeH': FeHFin, 'Xkpc': XSetFin, 'Ykpc': YSetFin, 'Zkpc': ZSetFin, 'Rkpc': RSetFin, 'Th': Th, 'XRelkpc': XRel, 'YRelkpc':YRel, 'ZRelkpc': ZRel, 'RRelkpc': RRel, 'Galb': Galb, 'Gall': Gall}
-    ResDF    = pd.DataFrame(ResDict)
-
+    ResDict    = {'Bin': BinFin, 'Age': AgeFin, 'FeH': FeHFin, 'Xkpc': XSetFin, 'Ykpc': YSetFin, 'Zkpc': ZSetFin, 'Rkpc': RSetFin, 'Th': Th, 'XRelkpc': XRel, 'YRelkpc':YRel, 'ZRelkpc': ZRel, 'RRelkpc': RRel, 'Galb': Galb, 'Gall': Gall}
+    ResDF      = pd.DataFrame(ResDict)
+    MatchDWDDF = PresentDayDWDCandFinDF.iloc[NGalDo-NLeft:NGalDo-NLeft+NDo].reset_index(drop=True)
     
     #DWDDF    = DWDSet.iloc[IDSet]
     if ModelParams['ImportSimulation']:
-        ResDF      = pd.concat([ResDF, PresentDayDWDCandFinDF.iloc[NGalDo-NLeft:NGalDo-NLeft+NDo]], axis=1)
+        ResDF      = pd.concat([ResDF, MatchDWDDF], axis=1)
         if FirstPassQ:
             ResDF.to_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', index = False, mode ="w")
         else:
-            ResDF.to_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', index = False, mode ="a")
+            ResDF.to_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', index = False, mode ="a", header=False)
     else:
         if FirstPassQ:
             ResDF.to_csv(CurrOutDir + '/FullGalaxyMSs.csv', index = False, mode ="w")
         else:
-            ResDF.to_csv(CurrOutDir + '/FullGalaxyMSs.csv', index = False, mode ="a")
+            ResDF.to_csv(CurrOutDir + '/FullGalaxyMSs.csv', index = False, mode ="a", header=False)
 
     ResDF      = []      
     NLeft     -= NDo 
     FirstPassQ = False
             
+#Clean the memory-consuming arrays
+PresentDayDWDCandFinDF = []
+    
+#Time the run
+elapsed = time.perf_counter() - start
+print('Convolution execution time: ', elapsed)
+    
 
 #Export only LISA-visible DWDs
 if ModelParams['ImportSimulation']:
     
-    ResDF = pd.read_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv', columns=['mass1', 'mass2', 'RRelkpc', 'PSetTodayHours'])
+    ResDF = pd.read_csv(CurrOutDir+Code+'_Galaxy_AllDWDs.csv')#, usecols=['mass1', 'mass2', 'RRelkpc', 'PSetTodayHours'])
     n_values = len(ResDF.index)
 
     m_1    = (ResDF['mass1']).to_numpy() * u.Msun
@@ -840,7 +896,6 @@ if ModelParams['ImportSimulation']:
     LISADF.to_csv(CurrOutDir+Code+'_Galaxy_LISA_DWDs.csv', index = False)
 
 
-    
-    
+
     
     
