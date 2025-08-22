@@ -1,6 +1,6 @@
-.ipynb_checkpoints/
-__pycache__/
-big_data
-*.png
-.DS_Store
-data
+#.ipynb_checkpoints/
+#__pycache__/
+#big_data
+#*.png
+#.DS_Store
+#data
